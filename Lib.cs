@@ -90,10 +90,21 @@ namespace spacedout
                 {
                     var lastQuiz = r.GetInt64("value");
                     var d = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - lastQuiz;
-                    return d > 60 * 60;
+                    return d > 60 * 40;
                 }
             }
             return false;
+        }
+        public void UpdateQuizTime()
+        {
+            using (var conn = createConnection())
+            using (var sql = new SQLiteCommand(@"
+                    UPDATE `stat` SET `value` = strftime('%s','now') WHERE `key` = 'last_quiz'
+                ", conn))
+            {
+
+                sql.ExecuteNonQuery();
+            }
         }
 
         public IEnumerable<Phrase> GetPhrases(string tag = null)

@@ -16,6 +16,7 @@ namespace spacedout
     {
         void Start(StateManager.Control ctrl);
         void Update(long elapsed, Action<string> nextState);
+        void Tick() { }
     }
 
     class StateManager : StateManager.Control
@@ -28,11 +29,12 @@ namespace spacedout
 
         Dictionary<string, State> states = new Dictionary<string, State>();
         DateTime lastUpdate = DateTime.Now;
-        State currentState;
+        public State CurrentState;
 
         public StateManager(int updateFrequency)
         {
             DispatcherTimer.Run(tick, new System.TimeSpan(0, 0, updateFrequency));
+            DispatcherTimer.Run(fastTick, new System.TimeSpan(0, 0, 0, 0, 256));
         }
 
         public void AddState(string name, State state)
@@ -51,18 +53,28 @@ namespace spacedout
                 throw new WarningException("Unknown state key: " + name);
             }
             var state = states[name];
-            currentState = state;
+            CurrentState = state;
             lastUpdate = DateTime.Now;
             state.Start(this);
         }
 
         public bool tick()
         {
-            if (currentState != null)
+            if (CurrentState != null)
             {
                 var now = System.DateTime.Now;
                 var elapsed = DateTime.Now.Subtract(lastUpdate).Duration().Seconds;
-                currentState.Update(elapsed, this.Start);
+                CurrentState.Update(elapsed, this.Start);
+            }
+            return true;
+        }
+        public bool fastTick()
+        {
+            if (CurrentState != null)
+            {
+                var now = System.DateTime.Now;
+                var elapsed = DateTime.Now.Subtract(lastUpdate).Duration().Seconds;
+                CurrentState.Tick();
             }
             return true;
         }
@@ -92,17 +104,13 @@ namespace spacedout
 
         Button startQuiz;
 
+        bool blinkQuizButton = false;
+        bool isQuizTime = false;
+
         public ReviewState(MainWindow window)
         {
             this.window = window;
-        }
-
-        public void Start(StateManager.Control ctrl)
-        {
-            stateControl = ctrl;
-            var db = new Db();
-            //db.createTables();
-            phrases = db.GetPhrases().ToList();
+            window.Focusable = false;
 
             var phraseReveal = window.Find<Button>("phraseReveal");
             var phraseNext = window.Find<Button>("phraseNext");
@@ -118,10 +126,18 @@ namespace spacedout
             phraseNextAddHalfDay.Click += onPhraseNextHalfDay;
             phraseNextAddDay.Click += onPhraseNextDay;
             startQuiz.Click += onStartQuiz;
+        }
 
+        public void Start(StateManager.Control ctrl)
+        {
+            stateControl = ctrl;
+            var db = new Db();
+            phrases = db.GetPhrases().ToList();
+            startQuiz.Background = new SolidColorBrush(0xFF333333);
 
             if (phrases.Count > 0)
             {
+                isQuizTime = false;
                 showPhrase(phrases[0]);
             }
 
@@ -254,30 +270,28 @@ namespace spacedout
             System.Console.WriteLine("{0}", e);
         }
 
-        bool blah = false;
-        bool isQuizTime = false;
         public void Update(long elapsed, Action<string> nextState)
         {
-            // TODO; blink  startQuiz button
-            // TODO: add textbox for inputing translation text
-            if (isQuizTime && elapsed > 1)
-            {
-                if (blah)
-                {
-                    startQuiz.Background = new SolidColorBrush(0xFF0000);
-                }
-                else
-                {
-                    startQuiz.Background = new SolidColorBrush(0x00FF00);
-                }
-                blah = !blah;
-            }
+            nextPhrase();
+            var db = new Db();
+            isQuizTime = db.IsQuizTime();
+        }
 
-            if (elapsed > 5)
+        public void Tick()
+        {
+            if (!isQuizTime)
             {
-                nextPhrase();
-                isQuizTime = new Db().IsQuizTime() || true;
+                return;
             }
+            if (blinkQuizButton)
+            {
+                startQuiz.Background = new SolidColorBrush(0xFFFF0000);
+            }
+            else
+            {
+                startQuiz.Background = new SolidColorBrush(0xFF0000FF);
+            }
+            blinkQuizButton = !blinkQuizButton;
         }
     }
 
@@ -290,6 +304,7 @@ namespace spacedout
         QuizWindow quizWindow;
 
         List<Phrase> phrases;
+        List<Phrase> repeatPhrases;
 
         int phraseIndex;
 
@@ -298,6 +313,10 @@ namespace spacedout
         SubState subState = SubState.Foobar;
 
         StateManager.Control stateControl;
+
+        int numPhrases = 15;
+
+        bool repeatRound = false;
 
         public QuizState(MainWindow mainWindow)
         {
@@ -309,18 +328,26 @@ namespace spacedout
             quizWindow.Position = new PixelPoint(0, 0);
             quizWindow.Width = b.Width;
             quizWindow.Height = b.Height;
+            repeatPhrases = new List<Phrase>();
 
             var translation = quizWindow.Find<TextBlock>("translation");
             var text = quizWindow.Find<TextBlock>("text");
+            var inputTranslation = quizWindow.Find<TextBox>("inputTranslation");
 
+            getButton("nope").Click += onNope;
+            getButton("okay").Click += onOkay;
             getButton("reveal").Click += (s, e) => reveal();
-            getButton("next").Click += (s, e) => nextPhrase();
+            inputTranslation.KeyUp += onInput;
         }
         public void Start(StateManager.Control ctrl)
         {
             stateControl = ctrl;
-            quizWindow.ShowDialog(mainWindow);
-            phrases = new Db().GetPhrases().Take(5).ToList();
+            quizWindow.Show();
+            quizWindow.Title = "__spacedout_quiz";
+            phrases = new Db().GetPhrases().Take(numPhrases).ToList();
+            repeatPhrases.Clear();
+            repeatRound = false;
+
             if (phrases.Count == 0)
             {
                 quizWindow.Hide();
@@ -337,13 +364,14 @@ namespace spacedout
             switch (subState)
             {
                 case SubState.Foobar:
-                    if (elapsed >= 5)
+                    var text = quizWindow.Find<TextBlock>("text");
+                    if (elapsed >= 2 && !text.IsVisible)
                     {
                         showButton("reveal");
                     }
                     break;
                 case SubState.Reveal:
-                    if (elapsed >= 5)
+                    if (elapsed >= 2)
                     {
                         //nextPhrase
                     }
@@ -352,14 +380,57 @@ namespace spacedout
             }
         }
 
+        void onNope(object sender, RoutedEventArgs e)
+        {
+            var phrase = phrases[phraseIndex];
+            new Db().IncreaseFrequency(phrase, phrase.Frequency / 3);
+            if (phraseIndex < numPhrases - 2)
+            {
+                repeatPhrases.Add(phrase);
+            }
+            nextPhrase();
+        }
+
+        void onOkay(object sender, RoutedEventArgs e)
+        {
+            var phrase = phrases[phraseIndex];
+
+            var n = repeatRound ? 8 : 4;
+            new Db().DecreaseFrequency(phrase, phrase.Frequency / n);
+            nextPhrase();
+        }
+
+        void onInput(object sender, Avalonia.Input.KeyEventArgs e)
+        {
+            var phrase = phrases[phraseIndex];
+            var inputTranslation = quizWindow.Find<TextBox>("inputTranslation");
+
+            if (inputTranslation.Text.ToLower() != phrase.Translation.ToLower())
+            {
+                inputTranslation.Foreground = new SolidColorBrush(0xFF006600);
+            }
+            else
+            {
+                inputTranslation.Foreground = new SolidColorBrush(0xFF660000);
+            }
+        }
+
+
         void reveal()
         {
             var text = quizWindow.Find<TextBlock>("text");
             text.IsVisible = true;
+            showButton("nope");
+            showButton("okay");
             hideButton("reveal");
-            showButton("next");
             subState = SubState.Foobar;
-            stateControl.resetTimer();
+        }
+
+        void endQuiz()
+        {
+            quizWindow.Hide();
+            new Db().UpdateQuizTime();
+            stateControl.nextState("review");
         }
 
         bool nextPhrase()
@@ -367,9 +438,19 @@ namespace spacedout
             phraseIndex++;
             if (phraseIndex >= phrases.Count)
             {
-                quizWindow.Hide();
-                stateControl.nextState("review");
-                return false;
+                if (!repeatRound && repeatPhrases.Count > 0)
+                {
+                    phraseIndex = 0;
+                    phrases.Clear();
+                    phrases.AddRange(repeatPhrases);
+                    repeatPhrases.Clear();
+                    repeatRound = true;
+                }
+                else
+                {
+                    endQuiz();
+                    return false;
+                }
             }
 
             var phrase = phrases[phraseIndex];
@@ -379,11 +460,10 @@ namespace spacedout
             text.Text = string.Format("{0}", phrase.Text);
             text.IsVisible = false;
             subState = SubState.Foobar;
+            hideButton("nope");
+            hideButton("okay");
             hideButton("reveal");
-            hideButton("next");
             stateControl.resetTimer();
-
-            new Db().DecreaseFrequency(phrase, 2);
 
             return true;
         }
@@ -400,9 +480,16 @@ namespace spacedout
         {
             quizWindow.Find<Button>(name).IsVisible = true;
         }
+
+        void showInput()
+        {
+            quizWindow.Find<TextBox>("inputTranslation").IsVisible = true;
+        }
+        void hideInput()
+        {
+            quizWindow.Find<TextBox>("inputTranslation").IsVisible = false;
+        }
     }
-
-
 
 
     public class MainWindow : Window
@@ -411,6 +498,8 @@ namespace spacedout
 
         Translater tr = new Swedish();
 
+
+        StateManager stateManager;
 
         public MainWindow()
         {
@@ -444,7 +533,7 @@ namespace spacedout
 
             DispatcherTimer.Run(tick, new System.TimeSpan(0, 0, 1));
 
-            var stateManager = new StateManager(10);
+            stateManager = new StateManager(10);
             stateManager.AddState("review", new ReviewState(this));
             stateManager.AddState("quiz", new QuizState(this));
             stateManager.Start("review");
