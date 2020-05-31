@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Avalonia.Markup.Xaml;
 using Avalonia.Interactivity;
 using System.ComponentModel;
+using System.Diagnostics;
 
 namespace spacedout
 {
@@ -16,7 +17,21 @@ namespace spacedout
     {
         void Start(StateManager.Control ctrl);
         void Update(long elapsed, Action<string> nextState);
-        void Tick() { }
+        void Tick(int elapsed) { }
+    }
+
+    class Audio
+    {
+        public static void Play(int id)
+        {
+            var home = Environment.GetEnvironmentVariable("HOME");
+            var path = $"{home}/.local/share/spacedout_audio/{id}.mp3";
+
+            var procInfo = new ProcessStartInfo();
+            procInfo.FileName = "/usr/bin/play";
+            procInfo.Arguments = "-q " + path;
+            Process.Start(procInfo);
+        }
     }
 
     class StateManager : StateManager.Control
@@ -74,7 +89,8 @@ namespace spacedout
             {
                 var now = System.DateTime.Now;
                 var elapsed = DateTime.Now.Subtract(lastUpdate).Duration().Seconds;
-                CurrentState.Tick();
+                Console.WriteLine("{0}", elapsed);
+                CurrentState.Tick(elapsed);
             }
             return true;
         }
@@ -277,7 +293,7 @@ namespace spacedout
             isQuizTime = db.IsQuizTime();
         }
 
-        public void Tick()
+        public void Tick(int elapsed)
         {
             if (!isQuizTime)
             {
@@ -334,6 +350,7 @@ namespace spacedout
             var text = quizWindow.Find<TextBlock>("text");
             var inputTranslation = quizWindow.Find<TextBox>("inputTranslation");
 
+            getButton("play").Click += (s, e) => play();
             getButton("nope").Click += onNope;
             getButton("okay").Click += onOkay;
             getButton("reveal").Click += (s, e) => reveal();
@@ -344,7 +361,7 @@ namespace spacedout
             stateControl = ctrl;
             quizWindow.Show();
             quizWindow.Title = "__spacedout_quiz";
-            phrases = new Db().GetPhrases().Take(numPhrases).ToList();
+            phrases = new Db().GetPhrases(numPhrases).ToList();
             repeatPhrases.Clear();
             repeatRound = false;
 
@@ -358,14 +375,18 @@ namespace spacedout
             phraseIndex = -1;
             nextPhrase();
         }
-
         public void Update(long elapsed, Action<string> nextState)
+        {
+
+        }
+
+        public void Tick(int elapsed)
         {
             switch (subState)
             {
                 case SubState.Foobar:
                     var text = quizWindow.Find<TextBlock>("text");
-                    if (elapsed >= 2 && !text.IsVisible)
+                    if (elapsed >= 4 && !text.IsVisible)
                     {
                         showButton("reveal");
                     }
@@ -378,6 +399,12 @@ namespace spacedout
                     break;
 
             }
+        }
+
+        void play()
+        {
+            var phrase = phrases[phraseIndex];
+            Audio.Play(phrase.ID);
         }
 
         void onNope(object sender, RoutedEventArgs e)
@@ -395,7 +422,7 @@ namespace spacedout
         {
             var phrase = phrases[phraseIndex];
 
-            var n = repeatRound ? 8 : 4;
+            var n = repeatRound ? 4 : 2;
             new Db().DecreaseFrequency(phrase, phrase.Frequency / n);
             nextPhrase();
         }
@@ -424,6 +451,8 @@ namespace spacedout
             showButton("okay");
             hideButton("reveal");
             subState = SubState.Foobar;
+
+            play();
         }
 
         void endQuiz()
@@ -464,6 +493,8 @@ namespace spacedout
             hideButton("okay");
             hideButton("reveal");
             stateControl.resetTimer();
+
+            Audio.Play(phrase.ID);
 
             return true;
         }
@@ -537,6 +568,8 @@ namespace spacedout
             stateManager.AddState("review", new ReviewState(this));
             stateManager.AddState("quiz", new QuizState(this));
             stateManager.Start("review");
+
+
         }
 
         private void InitializeComponent()
@@ -555,7 +588,6 @@ namespace spacedout
 
         public void onOpened(object sender, EventArgs e)
         {
-            Console.WriteLine("initialized");
             var b = Screens.Primary.Bounds;
             //Width = b.Width;
             Position = new PixelPoint(0, b.Bottom - (int)Height);

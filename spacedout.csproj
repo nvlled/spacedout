@@ -1,34 +1,22 @@
-﻿<Project
-   Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>netcoreapp3.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <Compile
-       Update="**\*.xaml.cs">
+    <Compile Update="**\*.xaml.cs">
       <DependentUpon>%(Filename)</DependentUpon>
     </Compile>
-    <AvaloniaResource
-       Include="**\*.xaml">
+    <AvaloniaResource Include="**\*.xaml">
       <SubType>Designer</SubType>
     </AvaloniaResource>
   </ItemGroup>
   <ItemGroup>
-    <Content
-       Include=".\images\*.png"
-       CopyToOutputDirectory="Always"
-       CopyToPublishDirectory="Always"/>
+    <Content Include=".\images\*.png" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference
-       Include="Avalonia"
-       Version="0.9.9"/>
-    <PackageReference
-       Include="Avalonia.Desktop"
-       Version="0.9.9"/>
-    <PackageReference
-       Include="System.Data.SQLite"
-       Version="1.0.112"/>
+    <PackageReference Include="Avalonia" Version="0.9.9" />
+    <PackageReference Include="Avalonia.Desktop" Version="0.9.9" />
+    <PackageReference Include="System.Data.SQLite" Version="1.0.112" />
   </ItemGroup>
 </Project>

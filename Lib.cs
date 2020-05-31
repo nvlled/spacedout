@@ -39,7 +39,7 @@ namespace spacedout
         public int Timestamp { get; set; }
 
         //public static float MaxWait = 86400.0f * 2.0f;
-        public static int Limit = 30;
+        public const int Limit = 15;
 
         public void DecreaseFrequency(float minutes)
         {
@@ -107,25 +107,21 @@ namespace spacedout
             }
         }
 
-        public IEnumerable<Phrase> GetPhrases(string tag = null)
+        public IEnumerable<Phrase> GetPhrases(int count = Phrase.Limit)
         {
-            var available = false;
+            bool available = false;
             using (var conn = createConnection())
             using (var sql = new SQLiteCommand(@"
                 SELECT * FROM (
                     SELECT `id`, `text`, `translation`, COALESCE(`tag`, ''), `frequency`, `timestamp`
                     FROM `phrases` 
-                    WHERE CAST(@now-`timestamp` AS FLOAT)/60 >= `frequency`
-                        AND (@tag IS NULL OR `tag` = @tag)
+                    WHERE CAST(strftime('%s','now') - `timestamp` AS FLOAT)/60 >= `frequency`
                     ORDER BY `timestamp`
                     LIMIT @limit
                 ) ORDER BY RANDOM()
                 ", conn))
             {
-                sql.Parameters.AddWithValue("@now", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-                sql.Parameters.AddWithValue("@tag", tag);
-                sql.Parameters.AddWithValue("@limit", Phrase.Limit);
-
+                sql.Parameters.AddWithValue("@limit", count);
 
                 using (var r = sql.ExecuteReader())
                 {
@@ -146,13 +142,13 @@ namespace spacedout
                 }
             }
 
-            //if (!available)
-            //{
-            //    foreach (var p in GetRandomPhrases(tag))
-            //    {
-            //        yield return p;
-            //    }
-            //}
+            if (!available)
+            {
+                foreach (var p in GetRandomPhrases())
+                {
+                    yield return p;
+                }
+            }
         }
 
         public IEnumerable<Phrase> GetRandomPhrases(string tag = null)
