@@ -49,7 +49,7 @@ namespace spacedout
         public StateManager(int updateFrequency)
         {
             DispatcherTimer.Run(tick, new System.TimeSpan(0, 0, updateFrequency));
-            DispatcherTimer.Run(fastTick, new System.TimeSpan(0, 0, 0, 0, 256));
+            DispatcherTimer.Run(fastTick, new System.TimeSpan(0, 0, 0, 0, 512));
         }
 
         public void AddState(string name, State state)
@@ -89,7 +89,6 @@ namespace spacedout
             {
                 var now = System.DateTime.Now;
                 var elapsed = DateTime.Now.Subtract(lastUpdate).Duration().Seconds;
-                Console.WriteLine("{0}", elapsed);
                 CurrentState.Tick(elapsed);
             }
             return true;
@@ -283,7 +282,6 @@ namespace spacedout
             output.Text += c;
             output.Focus();
             output.CaretIndex = output.Text.Length;
-            System.Console.WriteLine("{0}", e);
         }
 
         public void Update(long elapsed, Action<string> nextState)
@@ -305,7 +303,7 @@ namespace spacedout
             }
             else
             {
-                startQuiz.Background = new SolidColorBrush(0xFF0000FF);
+                startQuiz.Background = new SolidColorBrush(0xFFFF5500);
             }
             blinkQuizButton = !blinkQuizButton;
         }
@@ -324,7 +322,7 @@ namespace spacedout
 
         int phraseIndex;
 
-        enum SubState { Foobar, Reveal }
+        enum SubState { Foobar, Reveal, InputAnswer }
 
         SubState subState = SubState.Foobar;
 
@@ -333,6 +331,9 @@ namespace spacedout
         int numPhrases = 15;
 
         bool repeatRound = false;
+
+        List<string> correctWordList = new List<string>();
+        List<string> answerWordList = new List<string>();
 
         public QuizState(MainWindow mainWindow)
         {
@@ -354,6 +355,7 @@ namespace spacedout
             getButton("nope").Click += onNope;
             getButton("okay").Click += onOkay;
             getButton("reveal").Click += (s, e) => reveal();
+            getButton("backspace").Click += onBackspace;
             inputTranslation.KeyUp += onInput;
         }
         public void Start(StateManager.Control ctrl)
@@ -391,13 +393,18 @@ namespace spacedout
                         showButton("reveal");
                     }
                     break;
+                case SubState.InputAnswer:
+                    if (elapsed >= 5)
+                    {
+                        showButton("play");
+                    }
+                    break;
                 case SubState.Reveal:
                     if (elapsed >= 2)
                     {
                         //nextPhrase
                     }
                     break;
-
             }
         }
 
@@ -427,6 +434,21 @@ namespace spacedout
             nextPhrase();
         }
 
+        void onBackspace(object sender, RoutedEventArgs e)
+        {
+            if (answerWordList.Count == 0)
+            {
+                return;
+            }
+            answerWordList.RemoveAt(answerWordList.Count - 1);
+            var translation = quizWindow.Find<TextBlock>("translation");
+            translation.Text = "";
+            foreach (var w in answerWordList)
+            {
+                translation.Text += w + " ";
+            }
+        }
+
         void onInput(object sender, Avalonia.Input.KeyEventArgs e)
         {
             var phrase = phrases[phraseIndex];
@@ -442,18 +464,62 @@ namespace spacedout
             }
         }
 
+        bool isCorrectAnswer()
+        {
+            if (correctWordList.Count != answerWordList.Count)
+            {
+                return false;
+            }
+
+            var i = 0;
+            foreach (var w in correctWordList)
+            {
+                if (answerWordList[i] != w)
+                {
+                    return false;
+                }
+                i++;
+            }
+            return true;
+        }
+
 
         void reveal()
         {
-            var text = quizWindow.Find<TextBlock>("text");
-            text.IsVisible = true;
-            showButton("nope");
-            showButton("okay");
-            hideButton("reveal");
-            subState = SubState.Foobar;
+            var phrase = phrases[phraseIndex];
+            if (phrase.IsAged())
+            {
+                if (isCorrectAnswer())
+                {
+                    showButton("okay");
+                }
+                else
+                {
+                    showButton("nope");
+                }
+                hideButton("reveal");
+                hideButton("backspace");
+                showButton("play");
+                Audio.Play(phrase.ID);
+                var text = quizWindow.Find<TextBlock>("text");
+                text.Text = phrase.Translation;
+            }
+            else
+            {
+                var text = quizWindow.Find<TextBlock>("text");
+                text.IsVisible = true;
+                showButton("nope");
+                showButton("okay");
+                hideButton("reveal");
+                subState = SubState.Foobar;
 
-            play();
+                play();
+            }
         }
+
+        // TODO
+        // if wrong for the first time, then show audio btn and play audio
+        // if phrase is really aged, then play only audio, do not show translation
 
         void endQuiz()
         {
@@ -465,6 +531,11 @@ namespace spacedout
         bool nextPhrase()
         {
             phraseIndex++;
+
+            answerWordList.Clear();
+            var shuffledButtons = quizWindow.Find<WrapPanel>("shuffledButtons");
+            shuffledButtons.Children.Clear();
+
             if (phraseIndex >= phrases.Count)
             {
                 if (!repeatRound && repeatPhrases.Count > 0)
@@ -482,21 +553,85 @@ namespace spacedout
                 }
             }
 
+            var rnd = new Random();
             var phrase = phrases[phraseIndex];
-            var translation = quizWindow.Find<TextBlock>("translation");
-            var text = quizWindow.Find<TextBlock>("text");
-            translation.Text = string.Format("{0}", phrase.Translation);
-            text.Text = string.Format("{0}", phrase.Text);
-            text.IsVisible = false;
-            subState = SubState.Foobar;
-            hideButton("nope");
-            hideButton("okay");
-            hideButton("reveal");
-            stateControl.resetTimer();
-
-            Audio.Play(phrase.ID);
+            if (phrase.IsAged())
+            {
+                foobar();
+                var text = quizWindow.Find<TextBlock>("text");
+                var translation = quizWindow.Find<TextBlock>("translation");
+                text.IsVisible = true;
+                text.Text = phrase.Text;
+                translation.Text = "";
+                showButton("backspace");
+                showButton("reveal");
+                hideButton("play");
+                hideButton("nope");
+                hideButton("okay");
+            }
+            else
+            {
+                var translation = quizWindow.Find<TextBlock>("translation");
+                var text = quizWindow.Find<TextBlock>("text");
+                translation.Text = string.Format("{0}", phrase.Translation);
+                text.Text = string.Format("{0}", phrase.Text);
+                text.IsVisible = false;
+                subState = SubState.Foobar;
+                hideButton("backspace");
+                hideButton("nope");
+                hideButton("okay");
+                hideButton("reveal");
+                stateControl.resetTimer();
+                Audio.Play(phrase.ID);
+            }
 
             return true;
+        }
+
+        void foobar()
+        {
+            var phrase = phrases[phraseIndex];
+
+            correctWordList = removeNotation(phrase.Translation)
+                .Split(" ")
+                .Where(p => p.Length > 0)
+                .ToList();
+
+            var rnd = new Random();
+            var otherWords = new Db().GetRandomPhrases(3)
+            .Concat(new Phrase[] { phrase })
+            .SelectMany(p =>
+            {
+                return removeNotation(p.Translation)
+                .Split(" ")
+                .Where(p => p.Length > 0)
+                .ToList();
+            }).ToHashSet().ToList().OrderBy(item => item);
+
+            var translation = quizWindow.Find<TextBlock>("translation");
+            var shuffledButtons = quizWindow.Find<WrapPanel>("shuffledButtons");
+            foreach (var w in otherWords)
+            {
+                var btn = new Button();
+                btn.Content = w;
+                btn.FontSize = 21;
+                btn.MinWidth = 140;
+                btn.Click += (s, e) =>
+                {
+                    answerWordList.Add(w);
+                    translation.Text += w + " ";
+                };
+                shuffledButtons.Children.Add(btn);
+            }
+        }
+
+        string removeNotation(string s)
+        {
+            return s.ToLower()
+                .Replace(".", "")
+                .Replace(",", "")
+                .Replace("!", "")
+                .Replace("?", "");
         }
 
         Button getButton(string name)

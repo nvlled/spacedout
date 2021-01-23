@@ -57,6 +57,8 @@
                          VerticalAlignment="Center"
                          x:Name="midContainer">
                         <TextBlock
+                                 Width="1024"
+                                 TextWrapping="Wrap"
                                  Foreground="Green"
                                  Margin="10"
                                  VerticalAlignment="Center"
@@ -75,7 +77,23 @@
                                  Background="#333333"
                                  x:Name="inputTranslation"/>
                         <WrapPanel
+                                 MaxWidth="800"
+                                 Margin="0 20"
+                                 x:Name="shuffledButtons"
                                  HorizontalAlignment="Center">
+                                <Button
+                                         FontSize="20">Skit</Button>
+                                <Button
+                                         FontSize="20">lite</Button>
+                                <Button
+                                         FontSize="20">här</Button>
+                        </WrapPanel>
+                        <WrapPanel
+                                 HorizontalAlignment="Center">
+                                <Button
+                                         Width="100"
+                                         Margin="10 0"
+                                         x:Name="backspace">←️</Button>
                                 <Button
                                          x:Name="play">▶️</Button>
                                 <Button

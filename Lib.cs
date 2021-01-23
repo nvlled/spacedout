@@ -39,7 +39,7 @@ namespace spacedout
         public int Timestamp { get; set; }
 
         //public static float MaxWait = 86400.0f * 2.0f;
-        public const int Limit = 15;
+        public const int Limit = 30;
 
         public void DecreaseFrequency(float minutes)
         {
@@ -62,6 +62,11 @@ namespace spacedout
             {
                 Frequency = 0f;
             }
+        }
+
+        public bool IsAged()
+        {
+            return Frequency > 60 * 24;
         }
     }
 
@@ -90,7 +95,7 @@ namespace spacedout
                 {
                     var lastQuiz = r.GetInt64("value");
                     var d = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - lastQuiz;
-                    return d > 60 * 40;
+                    return d > 60 * 60 * 2;
                 }
             }
             return false;
@@ -116,7 +121,7 @@ namespace spacedout
                     SELECT `id`, `text`, `translation`, COALESCE(`tag`, ''), `frequency`, `timestamp`
                     FROM `phrases` 
                     WHERE CAST(strftime('%s','now') - `timestamp` AS FLOAT)/60 >= `frequency`
-                    ORDER BY `timestamp`
+                    ORDER BY `timestamp` 
                     LIMIT @limit
                 ) ORDER BY RANDOM()
                 ", conn))
@@ -144,14 +149,14 @@ namespace spacedout
 
             if (!available)
             {
-                foreach (var p in GetRandomPhrases())
+                foreach (var p in GetRandomPhrases(count))
                 {
                     yield return p;
                 }
             }
         }
 
-        public IEnumerable<Phrase> GetRandomPhrases(string tag = null)
+        public IEnumerable<Phrase> GetRandomPhrases(int count, string tag = null)
         {
             using (var conn = createConnection())
             using (var sql = new SQLiteCommand(@"
@@ -163,7 +168,7 @@ namespace spacedout
                 ", conn))
             {
                 sql.Parameters.AddWithValue("@tag", tag);
-                sql.Parameters.AddWithValue("@limit", Phrase.Limit);
+                sql.Parameters.AddWithValue("@limit", count);
 
                 using (var r = sql.ExecuteReader())
                 {
@@ -449,7 +454,7 @@ namespace spacedout
                 case 3: return "tre";
                 case 4: return "fyra";
                 case 5: return "fem";
-                case 6: return "sex";
+                case 6: return "six";
                 case 7: return "sju";
                 case 8: return "åtta";
                 case 9: return "nio";
